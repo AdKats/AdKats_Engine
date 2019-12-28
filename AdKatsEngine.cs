@@ -2,8 +2,6 @@
  * AdKats Administration Engine for Procon Frostbite.
  * 
  * Copyright 2013-2015 A Different Kind, LLC
- * 
- * AdKats was inspired by the gaming community A Different Kind (ADK). Visit http://www.ADKGamers.com/ for more information.
  *
  * The AdKats engine is free software: You can redistribute it and/or modify it under the terms of the
  * GNU General Public License as published by the Free Software Foundation, either version 3 of the License,
@@ -14,12 +12,12 @@
  * Development by Daniel J. Gradinjan (ColColonCleaner)
  * 
  * AdKatsEngine.cs
- * Version 0.0.0.1
+ * Version 0.0.0.2
  * 
  * UNKNOWN RELEASE DATE
  * 
  * Automatic Update Information
- * <version_code>0.0.0.1</version_code>
+ * <version_code>0.0.0.2</version_code>
  */
 
 #region
@@ -49,7 +47,7 @@ namespace PRoConEvents {
         }
 
         //Current engine version
-        private const String EngineVersion = "0.0.0.1";
+        private const String EngineVersion = "0.0.0.2";
 
         //Interop
         public static List<AdKatsEngine> Instances;
@@ -84,7 +82,7 @@ namespace PRoConEvents {
         }
 
         public string GetPluginAuthor() {
-            return "[ADK]ColColonCleaner";
+            return "ColColonCleaner";
         }
 
         public string GetPluginWebsite() {
@@ -124,12 +122,24 @@ namespace PRoConEvents {
             }
 
             public class Event {
-                public String Key { get; private set; }
-                public String Name { get; private set; }
-                public HashSet<GameVersion> Games { get; private set; }
-                public Func<Object, Object, Object, Object, Boolean> TriggerFunction { get; private set; }
-                public Func<Object, Object, Object, Object, Boolean> DefaultHandler { get; private set; }
-                public Dictionary<String, Func<Object, Object, Object, Object, Boolean>> HandlerMethods { get; private set; }
+                public String Key {
+                    get; private set;
+                }
+                public String Name {
+                    get; private set;
+                }
+                public HashSet<GameVersion> Games {
+                    get; private set;
+                }
+                public Func<Object, Object, Object, Object, Boolean> TriggerFunction {
+                    get; private set;
+                }
+                public Func<Object, Object, Object, Object, Boolean> DefaultHandler {
+                    get; private set;
+                }
+                public Dictionary<String, Func<Object, Object, Object, Object, Boolean>> HandlerMethods {
+                    get; private set;
+                }
 
                 public Event(String key, String name, HashSet<GameVersion> games, Func<Object, Object, Object, Object, Boolean> defaultHandler) {
                     AdKatsEngine engine = Instances.First();
@@ -375,7 +385,9 @@ namespace PRoConEvents {
                     Timestamp = DateTime.UtcNow;
                 }
 
-                public DateTime Timestamp { get; private set; }
+                public DateTime Timestamp {
+                    get; private set;
+                }
 
                 public void Kick() {
                     Timestamp = DateTime.UtcNow;
@@ -385,6 +397,7 @@ namespace PRoConEvents {
 
         public class InstanceManager {
             public enum InstanceState {
+                Cold,
                 Setup,
                 Stopped,
                 Starting,
@@ -397,13 +410,17 @@ namespace PRoConEvents {
             private readonly AdKatsEngine _engine;
 
             //Procon enabled is the goal for current state
-            public Boolean ProconEnabled { get; private set; }
-            public InstanceState State { get; private set; }
+            public Boolean ProconEnabled {
+                get; private set;
+            }
+            public InstanceState State {
+                get; private set;
+            }
 
             public InstanceManager(AdKatsEngine engine) {
                 try {
                     //Initial state
-                    State = InstanceState.Setup;
+                    State = InstanceState.Cold;
                     //References
                     _engine = engine;
                     //Start threads
@@ -423,7 +440,8 @@ namespace PRoConEvents {
             private void SetProconEnable(Boolean enable) {
                 if (enable && !ProconEnabled) {
                     _engine.ExecuteCommand("procon.protected.plugins.enable", _engine.GetType().Name, "True");
-                } else if (!enable && ProconEnabled) {
+                }
+                else if (!enable && ProconEnabled) {
                     _engine.ExecuteCommand("procon.protected.plugins.enable", _engine.GetType().Name, "False");
                 }
             }
@@ -445,40 +463,45 @@ namespace PRoConEvents {
                     while (true) {
                         try {
                             //Check state
-                            switch (State) {
-                                case InstanceState.Setup:
-                                    RunSetupSequence();
-                                    break;
-                                case InstanceState.Stopped:
-                                    //If stopped, and procon enabled, run startup sequence
-                                    if (ProconEnabled) {
-                                        RunStartupSequence();
-                                    }
-                                    break;
-                                case InstanceState.Starting:
-                                    //If starting, and procon disabled, send acknowledgement
-                                    if (!ProconEnabled) {
-                                        _engine.Log.Info("Shutdown requested during startup. Please wait.");
-                                    }
-                                    break;
-                                case InstanceState.Running:
-                                    //If running, and procon disabled, run shutdown sequence
-                                    if (!ProconEnabled) {
-                                        RunShutdownSequence();
-                                    }
-                                    break;
-                                case InstanceState.Stopping:
-                                    //If stopping, and procon enabled, send acknowledgement
-                                    if (ProconEnabled) {
-                                        _engine.Log.Info("Startup will commence after shutdown is complete. Please wait.");
-                                    }
-                                    break;
-                                case InstanceState.Exception:
-                                    //If in exception state, send acklowledgement, cancel actions
-                                    _engine.Log.Error("Instance in exception state and cannot function. Inform ColColonCleaner, this should not happen.");
-                                    break;
-                                default:
-                                    throw new ArgumentOutOfRangeException();
+                            lock (_instanceMonitorWaitHandle) {
+                                switch (State) {
+                                    case InstanceState.Cold:
+                                        RunSetupSequence();
+                                        break;
+                                    case InstanceState.Setup:
+                                        // Do nothing in this case
+                                        break;
+                                    case InstanceState.Stopped:
+                                        //If stopped, and procon enabled, run startup sequence
+                                        if (ProconEnabled) {
+                                            RunStartupSequence();
+                                        }
+                                        break;
+                                    case InstanceState.Starting:
+                                        //If starting, and procon disabled, send acknowledgement
+                                        if (!ProconEnabled) {
+                                            _engine.Log.Info("Shutdown requested during startup. Please wait.");
+                                        }
+                                        break;
+                                    case InstanceState.Running:
+                                        //If running, and procon disabled, run shutdown sequence
+                                        if (!ProconEnabled) {
+                                            RunShutdownSequence();
+                                        }
+                                        break;
+                                    case InstanceState.Stopping:
+                                        //If stopping, and procon enabled, send acknowledgement
+                                        if (ProconEnabled) {
+                                            _engine.Log.Info("Startup will commence after shutdown is complete. Please wait.");
+                                        }
+                                        break;
+                                    case InstanceState.Exception:
+                                        //If in exception state, send acklowledgement, cancel actions
+                                        _engine.Log.Error("Instance in exception state and cannot function. Inform ColColonCleaner, this should not happen.");
+                                        break;
+                                    default:
+                                        throw new ArgumentOutOfRangeException();
+                                }
                             }
                             //Wait for input
                             _instanceMonitorWaitHandle.Reset();
@@ -493,7 +516,7 @@ namespace PRoConEvents {
             }
 
             private void RunSetupSequence() {
-                _engine.Log.Info("Preparing for startup.");
+                _engine.Log.Info("Preparing AdKatsEngine for startup.");
                 SetCurrentState(InstanceState.Setup);
                 _engine.Exe.Async("EngineSetup", () => {
                     //Wait to represent registered setup code
@@ -556,7 +579,9 @@ namespace PRoConEvents {
                 SuperTrace
             }
 
-            public DebugLevel CurrentDebugLevel { get; set; }
+            public DebugLevel CurrentDebugLevel {
+                get; set;
+            }
 
             private void WriteConsole(String msg) {
                 _engine.ExecuteCommand("procon.protected.pluginconsole.write", "[^b" + _engine.GetType().Name + "^n] " + msg);
@@ -694,7 +719,9 @@ namespace PRoConEvents {
             }
 
             public static string AlphaNum(String msg) {
-                return AlphaNumRegex.Replace(msg, "");
+                var result = String.IsNullOrWhiteSpace(msg) ? "INVALID" : msg;
+                result = AlphaNumRegex.Replace(result, "");
+                return String.IsNullOrWhiteSpace(result) ? "INVALID" : result;
             }
 
             public static String GetTimeString(TimeSpan duration, Int32 maxComponents) {
@@ -715,13 +742,13 @@ namespace PRoConEvents {
                 Double monthSubset = (weekSubset / 4);
                 Double yearSubset = (monthSubset / 12);
 
-                int years = (Int32) yearSubset;
-                Int32 months = (Int32) monthSubset % 12;
-                Int32 weeks = (Int32) weekSubset % 4;
-                Int32 days = (Int32) daySubset % 7;
-                Int32 hours = (Int32) hourSubset % 24;
-                Int32 minutes = (Int32) minuteSubset % 60;
-                Int32 seconds = (Int32) secondSubset % 60;
+                int years = (Int32)yearSubset;
+                Int32 months = (Int32)monthSubset % 12;
+                Int32 weeks = (Int32)weekSubset % 4;
+                Int32 days = (Int32)daySubset % 7;
+                Int32 hours = (Int32)hourSubset % 24;
+                Int32 minutes = (Int32)minuteSubset % 60;
+                Int32 seconds = (Int32)secondSubset % 60;
 
                 Int32 usedComponents = 0;
                 if (years > 0 && usedComponents < maxComponents) {
